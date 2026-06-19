@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
-import CameraWrapper from './components/CameraWrapper'
+import MainWrapper from './components/MainWrapper'
 
 function App() {
-  const [count, setCount] = useState(0)
 
   return (
-    <div className="">
-      <CameraWrapper />
+    <div className="container">
+      <div className="row justify-content-center">
+        <div className="col-12 col-md-8">
+          <MainWrapper/>
+        </div>
+      </div>
     </div>
   )
 }
