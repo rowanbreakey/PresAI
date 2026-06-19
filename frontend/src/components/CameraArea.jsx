@@ -1,23 +1,40 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
-function CameraArea({ isRecording}) {
-    
+function CameraArea({ isRecording }) {
+    const videoRef = useRef(null);
+
     useEffect(() => {
-    if (isRecording) {
-      console.log("Camera Area: Starting webcam stream and recording...")
-    } else {
-      console.log("Camera Area: Stopping webcam stream and saving file...")
-    }
-  }, [isRecording])
+        if (isRecording) {
+            async function getMedia(constraints) {
+                let stream = null;
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (error) {
+                    console.log("Camera not working" + error.name)
+                }
+                
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            }
+            getMedia({video:true, audio:false});
+        } else {
+            console.log("camera feed ending")
+        }
+    }, [isRecording])
+
 
     return (
-        <div className="ratio ratio-16x9 bg-dark">
+        <>
             {isRecording ? (
-                <p>cam feed here</p>
+                <div className="ratio ratio-16x9 bg-dark">
+                    <video ref={videoRef} autoPlay playsInline style={{width :'100%'}} />
+                </div>
             ) : (
-                <p>no cam feed here</p>
+                <div className="ratio ratio-16x9 bg-dark"></div>
             )}
-        </div>
+        </>
     )
 }
 

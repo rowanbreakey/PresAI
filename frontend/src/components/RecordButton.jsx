@@ -1,10 +1,10 @@
 function RecordButton({ isRecording, onToggle }) {
     return (
-        <button className="btn btn-primary" onClick={onToggle}>
+        <button className="btn btn-primary m-3" onClick={onToggle}>
             {isRecording ? (
-                <p>Stop</p>
+                "Stop"
             ) : (
-                <p>Start</p>
+                "Start"
             )}
         </button>
     )

@@ -9,7 +9,7 @@ function CameraWrapper() {
         setIsRecording((prev) => !prev)
     }
     return (
-        <div className="card shadow p-4 mx-auto" style={{ maxWidth: '550px' }}>
+        <div className="card shadow p-4 m-4 mx-auto" style={{ maxWidth: '550px' }}>
             <CameraArea isRecording={isRecording} />
             <RecordButton isRecording={isRecording} onToggle={toggleRecording} />
         </div>
