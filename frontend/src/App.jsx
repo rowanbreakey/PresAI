@@ -1,13 +1,12 @@
 import MainWrapper from './components/MainWrapper'
+import LiveFeedback from './components/LiveFeedback'
 
 function App() {
 
   return (
     <div className="container">
-      <div className="row justify-content-center">
-        <div className="col-12 col-md-8">
-          <MainWrapper/>
-        </div>
+      <div className="row">
+        <MainWrapper/>
       </div>
     </div>
   )

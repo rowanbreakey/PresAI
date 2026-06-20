@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react"
 
-function CameraArea({ isRecording }) {
+function CameraArea({ isRecording, passNewData }) {
     const videoRef = useRef(null);
     const frameBatch = useRef([]);
+    const processingActive = useRef(false);
 
     useEffect(() => {
         if (isRecording) {
@@ -41,14 +42,40 @@ function CameraArea({ isRecording }) {
                 }
             }, 333);
 
-            const uploadInterval = setInterval(() => {
+            const uploadInterval = setInterval(async () => {
+                if (processingActive.current || frameBatch.current.length === 0) return;
+
                 const batchToSend = frameBatch.current;
                 frameBatch.current = [];
 
+                processingActive.current = true
+
                 try {
-                    console.log("api stuff here");
+                    
+                    const audio = "audio source will go here"
+
+                    const response = await fetch('http://127.0.0.1:8000/api/process-batch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type' : 'application/json'
+                        }, 
+                        body: JSON.stringify({
+                            frames: batchToSend,
+                            audio: audio
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Server status error: ${response.status}");
+                    }
+
+                    const result = await response.json();
+                    passNewData(result);
+
                 } catch (error) {
-                    console.log(error);
+                    console.log("couldnt process data", error);
+                } finally {
+                    processingActive.current = false;
                 }
             }, 5000);
 
