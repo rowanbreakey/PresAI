@@ -1,16 +1,43 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Any
+from typing import Any, Optional
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from mediapipe.tasks.python import audio
 import cv2 
+import base64
 import numpy as np
 import math
+import json
+import os
+from pydub import AudioSegment
+import io
+from faster_whisper import WhisperModel
+import shutil
+
+ffmpeg_bin = r"C:\ffmpeg\ffmpeg-8.1.1-essentials_build\bin"
+os.environ["PATH"] = ffmpeg_bin + os.pathsep + os.environ["PATH"]
 
 app = FastAPI()
+
+FFMPEG_DIR = r"C:\ffmpeg\ffmpeg-8.1.1-essentials_build\bin"
+
+os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ["PATH"]
+
+os.environ["FFMPEG_BINARY"] = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
+os.environ["FFPROBE_BINARY"] = os.path.join(FFMPEG_DIR, "ffprobe.exe")
+
+AudioSegment.converter = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
+AudioSegment.ffprobe = os.path.join(FFMPEG_DIR, "ffprobe.exe")
+
+import ctypes
+
+ctypes.WinDLL(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin\cublas64_12.dll")
+
+print("OK")
+
+model = WhisperModel("base", device="cuda", compute_type="float16")
 
 origins = [
     "http://localhost:5173",
@@ -25,23 +52,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class dataBatch(BaseModel):
-    frames: List[str]
-    audio: str
+def decode_base64_frames(base64_string: str):
+    if "," in base64_string:
+        base64_string = base64_string.split(",")[1]
+
+    img_bytes = base64.b64decode(base64_string)
+
+    array = np.frombuffer(img_bytes, dtype=np.uint8)
+    frame = cv2.imdecode(array, cv2.IMREAD_COLOR)
+
+    return frame
 
 def do_video_analysis(frame_batch):
-    # good start just need to clean up my math portion a little so that it also checks to make sure everything exists and isnt none.
-    # use some if statements and set to 0.0 otherwise to appear as no movement.
     # could also try doing something where if the landmarks arent detected it prompts the user to go back onscreen?
     data_by_frame = []
 
-    base_options = python.BaseOptions(model_asset_path='holistic_landmarker.task')
+    BaseOptions = mp.tasks.BaseOptions
+    model_path = "holistic_landmarker.task"
 
     options = vision.HolisticLandmarkerOptions(
-        base_options = base_options,
-        refine_landmarks = True,
-        output_face_blendshapes = True,
-        output_hand_landmarks = True
+        base_options = BaseOptions(model_asset_path=model_path),
+        output_face_blendshapes = True
     )
 
     with vision.HolisticLandmarker.create_from_options(options) as landmarker:
@@ -66,8 +97,8 @@ def do_video_analysis(frame_batch):
                 frame_data["left_wrist"] = (wrist.x, wrist.y)
 
             if result.face_landmarks and len(result.face_landmarks) > 0:
-                nose = result.face_landmarks[0][1]
-                eye_center = result.face_landmarks[0][468]
+                nose = result.face_landmarks[1]
+                eye_center = result.face_landmarks[468]
 
                 if nose and eye_center:
                     frame_data["left_eye"] = [eye_center.x-nose.x, eye_center.y-nose.y]
@@ -77,17 +108,26 @@ def do_video_analysis(frame_batch):
     velos_by_frame = []
 
     for i in range(1, len(data_by_frame)):
-        dx_right_wrist = data_by_frame[i]["right_wrist"][0] - data_by_frame[i-1]["right_wrist"][0]
-        dy_right_wrist = data_by_frame[i]["right_wrist"][1] - data_by_frame[i-1]["right_wrist"][1]
-        right_wrist_step = round(math.sqrt(dx_right_wrist**2 + dy_right_wrist**2), 4)
+        if data_by_frame[i]["right_wrist"] and data_by_frame[i-1]["right_wrist"]:
+            dx_right_wrist = data_by_frame[i]["right_wrist"][0] - data_by_frame[i-1]["right_wrist"][0]
+            dy_right_wrist = data_by_frame[i]["right_wrist"][1] - data_by_frame[i-1]["right_wrist"][1]
+            right_wrist_step = round(math.sqrt(dx_right_wrist**2 + dy_right_wrist**2), 4)
+        else:
+            right_wrist_step = 0
 
-        dx_left_wrist = data_by_frame[i]["left_wrist"][0] - data_by_frame[i-1]["left_wrist"][0]
-        dy_left_wrist = data_by_frame[i]["left_wrist"][1] - data_by_frame[i-1]["left_wrist"][1]
-        left_wrist_step = round(math.sqrt(dx_left_wrist**2 + dy_left_wrist**2), 4)
+        if data_by_frame[i]["left_wrist"] and data_by_frame[i-1]["left_wrist"]:
+            dx_left_wrist = data_by_frame[i]["left_wrist"][0] - data_by_frame[i-1]["left_wrist"][0]
+            dy_left_wrist = data_by_frame[i]["left_wrist"][1] - data_by_frame[i-1]["left_wrist"][1]
+            left_wrist_step = round(math.sqrt(dx_left_wrist**2 + dy_left_wrist**2), 4)
+        else:
+            left_wrist_step = 0
 
-        dx_left_eye = data_by_frame[i]["left_eye"][0] - data_by_frame[i-1]["left_eye"][0]
-        dy_left_eye = data_by_frame[i]["left_eye"][1] - data_by_frame[i-1]["left_eye"][1]
-        left_eye_step = round(math.sqrt(dx_left_eye**2 + dy_left_eye**2), 4)
+        if data_by_frame[i]["left_eye"] and data_by_frame[i-1]["left_eye"]:
+            dx_left_eye = data_by_frame[i]["left_eye"][0] - data_by_frame[i-1]["left_eye"][0]
+            dy_left_eye = data_by_frame[i]["left_eye"][1] - data_by_frame[i-1]["left_eye"][1]
+            left_eye_step = round(math.sqrt(dx_left_eye**2 + dy_left_eye**2), 4)
+        else:
+            left_eye_step = 0
 
         velos_by_frame.append((right_wrist_step, left_wrist_step, left_eye_step))
     
@@ -95,12 +135,36 @@ def do_video_analysis(frame_batch):
 
     
 def do_audio_analysis(audio_batch):
-    return audio_batch
+    segments, info = model.transcribe(audio_batch, beam_size=1, vad_filter=True, language="en")
+
+    for segment in segments:
+        print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
+
+    return segments
+
+
 
 @app.post("/api/process-batch")
-async def process_batch(batch: dataBatch):
-    video_data = do_video_analysis(batch.frames)
-    audio_data = do_audio_analysis(batch.audio)
+async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] = File(None)):
+    frame_list = json.loads(frames)
+    decoded_frames = []
+    for frame in frame_list:
+        decoded_frames.append(decode_base64_frames(frame))
+    
+    #video_data = do_video_analysis(decoded_frames)
+    if audio:
+        webm_bytes = await audio.read()
+
+        audio_segment = AudioSegment.from_file(io.BytesIO(webm_bytes), format="webm")
+
+        audio_segment.export("temp_audio.wav", format="wav")
+    
+        audio_data = do_audio_analysis("temp_audio.wav")
+
+        if os.path.exists("temp_audio.wav"):
+            os.remove("temp_audio.wav")
+    else:
+        audio_data = "Audio data could not be retreived"
 
     eye_contact_score = "good"
     gesture_score = "excellent"

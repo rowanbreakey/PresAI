@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react"
 
 function CameraArea({ isRecording, passNewData }) {
     const videoRef = useRef(null);
+    const audioRef = useRef(null)
     const frameBatch = useRef([]);
+    const audio = useRef([]);
     const processingActive = useRef(false);
 
     useEffect(() => {
@@ -15,15 +17,32 @@ function CameraArea({ isRecording, passNewData }) {
                 try {
                     stream = await navigator.mediaDevices.getUserMedia(constraints);
                     activeStream = stream;
-                } catch (error) {
-                    console.log("Camera not working" + error.name);
-                }
                 
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                    }
+
+                    const audioTracks = stream.getAudioTracks();
+                    if (audioTracks.length > 0) {
+                        const audioOnlyStream = new MediaStream([audioTracks[0]]);
+
+                        const audioRecorder = new MediaRecorder(audioOnlyStream, { mimeType: 'audio/webm' });
+                        audioRef.current = audioRecorder;
+
+                        audioRef.current.ondataavailable = (event) => {
+                            if (event.data.size > 0) {
+                                audio.current.push(event.data);
+                            }
+                        };
+
+                        audioRef.current.start();
+                    }
+                } catch (error) {
+                    console.log("Camera or mic not working" + error.name);
                 }
             }
-            getMedia({video:true, audio:false});
+            
+            getMedia({video:true, audio: {channelCount : 1, sampleRate : 16000}});
 
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
@@ -45,25 +64,34 @@ function CameraArea({ isRecording, passNewData }) {
             const uploadInterval = setInterval(async () => {
                 if (processingActive.current || frameBatch.current.length === 0) return;
 
-                const batchToSend = frameBatch.current;
+                const videoBatch = frameBatch.current;
                 frameBatch.current = [];
+                
+                let audioBatch = null;
 
-                processingActive.current = true
+                if (audioRef.current && audioRef.current.state === "recording") {
+                    audioRef.current.stop();
+                    
+                    audioBatch = new Blob(audio.current, {type : 'audio/webm'});
+                    audio.current = [];
+
+                    audioRef.current.start();
+                }
+
+                processingActive.current = true;
 
                 try {
-                    
-                    const audio = "audio source will go here"
+
+                    const formData = new FormData();
+                    formData.append('frames', JSON.stringify(videoBatch))
+                    if (audioBatch) {
+                        formData.append('audio', audioBatch, 'audio.webm')
+                    }
 
                     const response = await fetch('http://127.0.0.1:8000/api/process-batch', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type' : 'application/json'
-                        }, 
-                        body: JSON.stringify({
-                            frames: batchToSend,
-                            audio: audio
-                        }),
-                    });
+                        body: formData
+                        });
 
                     if (!response.ok) {
                         throw new Error("Server status error: ${response.status}");
