@@ -14,7 +14,9 @@ import os
 from pydub import AudioSegment
 import io
 from faster_whisper import WhisperModel
-import shutil
+import ctypes
+
+os.environ["GLOG_minloglevel"] = "2"
 
 ffmpeg_bin = r"C:\ffmpeg\ffmpeg-8.1.1-essentials_build\bin"
 os.environ["PATH"] = ffmpeg_bin + os.pathsep + os.environ["PATH"]
@@ -31,11 +33,7 @@ os.environ["FFPROBE_BINARY"] = os.path.join(FFMPEG_DIR, "ffprobe.exe")
 AudioSegment.converter = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
 AudioSegment.ffprobe = os.path.join(FFMPEG_DIR, "ffprobe.exe")
 
-import ctypes
-
 ctypes.WinDLL(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin\cublas64_12.dll")
-
-print("OK")
 
 model = WhisperModel("base", device="cuda", compute_type="float16")
 
@@ -68,7 +66,8 @@ def do_video_analysis(frame_batch):
     data_by_frame = []
 
     BaseOptions = mp.tasks.BaseOptions
-    model_path = "holistic_landmarker.task"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, "holistic_landmarker.task")
 
     options = vision.HolisticLandmarkerOptions(
         base_options = BaseOptions(model_asset_path=model_path),
@@ -85,15 +84,15 @@ def do_video_analysis(frame_batch):
             frame_data: dict[str, Any] = {
                 "right_wrist" : None, 
                 "left_wrist" : None, 
-                "right_eye" : None
+                "left_eye" : None
             }
 
             if result.right_hand_landmarks and len(result.right_hand_landmarks) > 0:
-                wrist = result.right_hand_landmarks[0][0]
+                wrist = result.right_hand_landmarks[0]
                 frame_data["right_wrist"] = (wrist.x, wrist.y)
 
             if result.left_hand_landmarks and len(result.left_hand_landmarks) > 0:
-                wrist = result.left_hand_landmarks[0][0]
+                wrist = result.left_hand_landmarks[0]
                 frame_data["left_wrist"] = (wrist.x, wrist.y)
 
             if result.face_landmarks and len(result.face_landmarks) > 0:
@@ -130,17 +129,19 @@ def do_video_analysis(frame_batch):
             left_eye_step = 0
 
         velos_by_frame.append((right_wrist_step, left_wrist_step, left_eye_step))
-    
+    print(velos_by_frame)
     return velos_by_frame
 
     
 def do_audio_analysis(audio_batch):
     segments, info = model.transcribe(audio_batch, beam_size=1, vad_filter=True, language="en")
 
-    for segment in segments:
-        print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
+    transcription = []
 
-    return segments
+    for segment in segments:
+        transcription.append(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
+    
+    return transcription
 
 
 
@@ -151,7 +152,8 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
     for frame in frame_list:
         decoded_frames.append(decode_base64_frames(frame))
     
-    #video_data = do_video_analysis(decoded_frames)
+    video_data = do_video_analysis(decoded_frames)
+
     if audio:
         webm_bytes = await audio.read()
 
