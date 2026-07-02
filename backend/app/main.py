@@ -5,7 +5,7 @@ from typing import Any, Optional
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-import cv2 
+import cv2
 import base64
 import numpy as np
 import math
