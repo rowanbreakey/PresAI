@@ -1,6 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from typing import Any, Optional
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -15,6 +15,9 @@ from pydub import AudioSegment
 import io
 from faster_whisper import WhisperModel
 import ctypes
+from supabase import create_client, Client
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from gotrue.errors import AuthApiError
 
 os.environ["GLOG_minloglevel"] = "2"
 
@@ -49,6 +52,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class Settings(BaseSettings):
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
+    model_config = SettingsConfigDict(env_file=".env")
+
+settings = Settings() # pyright: ignore[reportCallIssue]
+
+class SignUpRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+
+def get_supabase() -> Client:
+    print(settings.SUPABASE_URL)
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
 def decode_base64_frames(base64_string: str):
     if "," in base64_string:
@@ -143,6 +161,31 @@ def do_audio_analysis(audio_batch):
     
     return transcription
 
+@app.post("/auth/signup")
+def sign_in(payload: SignUpRequest, supabase: Client = Depends(get_supabase)):
+    try:
+        signup_data = supabase.auth.sign_up({
+            "email": payload.email,
+            "password": payload.password
+        })
+
+        return {
+            "message": "User successfully registered",
+            "user": signup_data.user,
+            "session_active": signup_data.session is not None
+        }
+
+    except AuthApiError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=str(e)
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"An error occurred during signup. {e}"
+        )
 
 
 @app.post("/api/process-batch")
