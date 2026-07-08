@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from typing import Any, Optional
@@ -162,7 +162,7 @@ def do_audio_analysis(audio_batch):
     return transcription
 
 @app.post("/auth/signup")
-def sign_in(payload: SignUpRequest, supabase: Client = Depends(get_supabase)):
+def sign_up(payload: SignUpRequest, supabase: Client = Depends(get_supabase)):
     try:
         signup_data = supabase.auth.sign_up({
             "email": payload.email,
@@ -186,7 +186,55 @@ def sign_in(payload: SignUpRequest, supabase: Client = Depends(get_supabase)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"An error occurred during signup. {e}"
         )
+    
+@app.get("/auth/signin")
+def sign_in(payload: SignUpRequest, response: Response, supabase: Client = Depends(get_supabase)):
+    try:
+        signin_data = supabase.auth.sign_in_with_password({
+            "email" : payload.email,
+            "password" : payload.password
+        })
 
+        session = signin_data.session
+        if not session or not signin_data.user:
+            raise HTTPException(
+                status_code=401
+                detail="Invalid email or password"
+            )
+
+        access_token = session.access_token
+        refresh_token = session.refresh_token
+
+        response.set_cookie(
+            key="supabase-access-token",
+            value=access_token,
+            httponly=True, 
+            secure=True, 
+            samesite="lax", 
+            max_age=3600
+        )
+
+        response.set_cookie(
+            key="supabse-refresh-token",
+            value=refresh_token, 
+            httponly=True, 
+            secure=True, 
+            samesite="lax", 
+            max_age=2592000
+        )
+
+        return {"status" : "success", "user" : signin_data.user.id}
+        
+    except HTTPException as e:
+        raise HTTPException(
+            status_code = status.HTTP_401_UNAUTHORIZED
+            detail = f"Login unsuccessful: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail = f"An error ocurred: {e}"
+        )
 
 @app.post("/api/process-batch")
 async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] = File(None)):
