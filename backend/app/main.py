@@ -187,7 +187,7 @@ def sign_up(payload: SignUpRequest, supabase: Client = Depends(get_supabase)):
             detail=f"An error occurred during signup. {e}"
         )
     
-@app.get("/auth/signin")
+@app.post("/auth/signin")
 def sign_in(payload: SignUpRequest, response: Response, supabase: Client = Depends(get_supabase)):
     try:
         signin_data = supabase.auth.sign_in_with_password({
@@ -198,7 +198,7 @@ def sign_in(payload: SignUpRequest, response: Response, supabase: Client = Depen
         session = signin_data.session
         if not session or not signin_data.user:
             raise HTTPException(
-                status_code=401
+                status_code=401,
                 detail="Invalid email or password"
             )
 
@@ -226,11 +226,14 @@ def sign_in(payload: SignUpRequest, response: Response, supabase: Client = Depen
         return {"status" : "success", "user" : signin_data.user.id}
         
     except HTTPException as e:
+        print(e)
         raise HTTPException(
-            status_code = status.HTTP_401_UNAUTHORIZED
+            status_code = status.HTTP_401_UNAUTHORIZED,
             detail = f"Login unsuccessful: {str(e)}"
         )
     except Exception as e:
+        print(e)
+
         raise HTTPException(
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail = f"An error ocurred: {e}"

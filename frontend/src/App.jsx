@@ -1,12 +1,12 @@
 import MainWrapper from './components/MainWrapper'
 import LiveFeedback from './components/LiveFeedback'
-import  SignInPage from './components/SignInPage'
 import { useState } from 'react'
+import AccountSelectionWrapper from './components/AccountSelectionWrapper'
 
 function App() {
   const [signingIn, setSigningIn] =  useState(true)
 
-  const toggleRecording = () => {
+  const toggleAccountSelection = () => {
     setSigningIn((prev) => !prev)
   }
 
@@ -15,7 +15,7 @@ function App() {
       {signingIn ? (
         <div className="container">
           <div className="row">
-            <SignInPage signingIn={signingIn} onSuccess={toggleRecording}/>
+            <AccountSelectionWrapper onSuccess={toggleAccountSelection}/>
           </div>
       </div>
       ) : (
