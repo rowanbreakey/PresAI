@@ -34,7 +34,7 @@ os.environ["FFMPEG_BINARY"] = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
 os.environ["FFPROBE_BINARY"] = os.path.join(FFMPEG_DIR, "ffprobe.exe")
 
 AudioSegment.converter = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
-AudioSegment.ffprobe = os.path.join(FFMPEG_DIR, "ffprobe.exe")
+AudioSegment.ffprobe = os.path.join(FFMPEG_DIR, "ffprobe.exe") # type: ignore
 
 ctypes.WinDLL(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin\cublas64_12.dll")
 
