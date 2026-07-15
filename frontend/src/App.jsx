@@ -4,7 +4,7 @@ import { useState } from 'react'
 import AccountSelectionWrapper from './components/AccountSelectionWrapper'
 
 function App() {
-  const [signingIn, setSigningIn] =  useState(true)
+  const [signingIn, setSigningIn] =  useState(false)
 
   const toggleAccountSelection = () => {
     setSigningIn((prev) => !prev)

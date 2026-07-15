@@ -65,7 +65,6 @@ class SignUpRequest(BaseModel):
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
 def get_supabase() -> Client:
-    print(settings.SUPABASE_URL)
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
 def decode_base64_frames(base64_string: str):
