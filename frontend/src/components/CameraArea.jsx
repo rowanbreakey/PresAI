@@ -70,7 +70,20 @@ function CameraArea({ isRecording, passNewData }) {
                 let audioBatch = null;
 
                 if (audioRef.current && audioRef.current.state === "recording") {
-                    audioRef.current.stop();
+                    await new Promise((resolve) => {
+                        const recorder = audioRef.current;
+                        
+                        const handleData = (event) => {
+                            if (event.data && event.data.size > 0) {
+                                audio.current.push(event.data);
+                            }
+                            recorder.removeEventListener('dataavailable', handleData);
+                            resolve();
+                        };
+
+                        recorder.addEventListener('dataavailable', handleData);
+                        recorder.stop();
+                    });
                     
                     audioBatch = new Blob(audio.current, {type : 'audio/webm'});
                     audio.current = [];
@@ -87,9 +100,9 @@ function CameraArea({ isRecording, passNewData }) {
                     if (audioBatch) {
                         formData.append('audio', audioBatch, 'audio.webm')
                     }
-
-                    const response = await fetch('http://127.0.0.1:8000/api/process-batch', {
+                    const response = await fetch(`http://${window.location.hostname}:8000/api/process-batch`, {
                         method: 'POST',
+                        credentials: 'include',
                         body: formData
                         });
 

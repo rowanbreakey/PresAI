@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status, Response
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from typing import Any, Optional
@@ -16,6 +16,7 @@ import io
 from faster_whisper import WhisperModel
 import ctypes
 from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from gotrue.errors import AuthApiError
 
@@ -42,6 +43,7 @@ model = WhisperModel("base", device="cuda", compute_type="float16")
 
 origins = [
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:3000",
 ]
 
@@ -56,6 +58,7 @@ app.add_middleware(
 class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str
     model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings() # pyright: ignore[reportCallIssue]
@@ -66,6 +69,9 @@ class SignUpRequest(BaseModel):
 
 def get_supabase() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
+def get_service_supabase() -> Client:
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
 def decode_base64_frames(base64_string: str):
     if "," in base64_string:
@@ -146,7 +152,6 @@ def do_video_analysis(frame_batch):
             left_eye_step = 0
 
         velos_by_frame.append((right_wrist_step, left_wrist_step, left_eye_step))
-    print(velos_by_frame)
     return velos_by_frame
 
     
@@ -204,42 +209,40 @@ def sign_in(payload: SignUpRequest, response: Response, supabase: Client = Depen
         access_token = session.access_token
         refresh_token = session.refresh_token
 
+        IS_PROD = os.getenv("ENV") == "production"
         response.set_cookie(
-            key="supabase-access-token",
+            key="supabase_access_token",
             value=access_token,
             httponly=True, 
-            secure=True, 
-            samesite="lax", 
+            secure=IS_PROD, 
+            samesite="none" if IS_PROD else "lax", 
             max_age=3600
         )
 
         response.set_cookie(
-            key="supabse-refresh-token",
-            value=refresh_token, 
+            key="supabase_refresh_token",
+            value=refresh_token,
             httponly=True, 
-            secure=True, 
-            samesite="lax", 
-            max_age=2592000
+            secure=IS_PROD, 
+            samesite="none" if IS_PROD else "lax", 
+            max_age=3600
         )
 
         return {"status" : "success", "user" : signin_data.user.id}
         
     except HTTPException as e:
-        print(e)
         raise HTTPException(
             status_code = status.HTTP_401_UNAUTHORIZED,
             detail = f"Login unsuccessful: {str(e)}"
         )
     except Exception as e:
-        print(e)
-
         raise HTTPException(
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail = f"An error ocurred: {e}"
         )
 
 @app.post("/api/process-batch")
-async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] = File(None)):
+async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] = File(None), supabase_access_token : str = Cookie(None), supabase : Client = Depends(get_service_supabase)):
     frame_list = json.loads(frames)
     decoded_frames = []
     for frame in frame_list:
@@ -259,13 +262,33 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
         if os.path.exists("temp_audio.wav"):
             os.remove("temp_audio.wav")
     else:
-        audio_data = "Audio data could not be retreived"
+        audio_data = ""
 
     eye_contact_score = "good"
     gesture_score = "excellent"
     pacing = "fast"
     filler_word_count = "1"
     tip = "slow down a little for better pacing and fewer filler words!"
+
+    user_data = {
+        "eye_contact_score" : "good", 
+        "gesture_score" : "excellent", 
+        "pacing" : "fast",
+        "filler_word_count" : "1",
+        "transcript" : audio_data
+    }
+    # In the future the ai will return a json which will be used as a return and as the data added to the supabase table. 
+    data = json.dumps(user_data, indent=4)
+    try:
+        user_response = supabase.auth.get_user(supabase_access_token)
+        if user_response:
+            user = user_response.user
+            id = user.id
+            supabase.table("active_session_data").insert({"user_id":id, "data":data}).execute()
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
 
     return {
         "status": "success",
