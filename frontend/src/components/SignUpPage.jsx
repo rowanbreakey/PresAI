@@ -12,7 +12,7 @@ function SignUpPage( {onSuccess, onSwitch} ) {
         setMessage({text: "", isError: false})
 
         try {
-            const response = await fetch('http://127.0.0.1:8000/auth/signup', {
+            const response = await fetch(`http://${window.location.hostname}:8000/auth/signup`, {
                 method: 'POST', 
                 headers: {
                     'Content-Type': 'application/json', 
