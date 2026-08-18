@@ -19,6 +19,8 @@ from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from gotrue.errors import AuthApiError
+from google import genai
+from google.genai import types
 
 os.environ["GLOG_minloglevel"] = "2"
 
@@ -59,13 +61,25 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
+    GEMINI_API_KEY: str
     model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings() # pyright: ignore[reportCallIssue]
 
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
 class SignUpRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+
+class AIResponse(BaseModel):
+    """General context goes here"""
+
+    eye_contact: str = Field(description="description of return parameter goes here")
+    pacing: str = Field(description="description of return parameter goes here")
+    filler_word_count: int = Field(description="description of return parameter goes here")
+    gesture_use: str = Field(description="description of return parameter goes here")
+    quick_tip: str = Field(description="description of return parameter goes here")
 
 def get_supabase() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -164,6 +178,13 @@ def do_audio_analysis(audio_batch):
         transcription.append(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
     
     return transcription
+
+def get_response_dict(parsed_data) -> dict:
+    if isinstance(parsed_data, BaseModel):
+        return parsed_data.model_dump()
+    if isinstance(parsed_data, dict):
+        return parsed_data
+    return {}
 
 @app.post("/auth/signup")
 def sign_up(payload: SignUpRequest, supabase: Client = Depends(get_supabase)):
@@ -264,37 +285,27 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
     else:
         audio_data = ""
 
-    eye_contact_score = "good"
-    gesture_score = "excellent"
-    pacing = "fast"
-    filler_word_count = "1"
-    tip = "slow down a little for better pacing and fewer filler words!"
+    ai_response_raw = client.models.generate_content(
+        model="gemini-3.6-flash", 
+        contents=f"TRANSCRIPT: {audio_data}, LANDMARK VELOCITIES: {video_data}",
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json", 
+            response_schema=AIResponse,
+        ),
+    )
 
-    user_data = {
-        "eye_contact_score" : "good", 
-        "gesture_score" : "excellent", 
-        "pacing" : "fast",
-        "filler_word_count" : "1",
-        "transcript" : audio_data
-    }
-    # In the future the ai will return a json which will be used as a return and as the data added to the supabase table. 
-    data = json.dumps(user_data, indent=4)
+
+    data = get_response_dict(ai_response_raw.parsed)
+    data["success"] = "success"
+
     try:
         user_response = supabase.auth.get_user(supabase_access_token)
         if user_response:
             user = user_response.user
             id = user.id
-            supabase.table("active_session_data").insert({"user_id":id, "data":data}).execute()
+            supabase.table("active_session_data").insert({"user_id":id, "data": data}).execute()
     except Exception as e:
         print(e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-
-    return {
-        "status": "success",
-        "eyeContact" : eye_contact_score, 
-        "gestures": gesture_score,
-        "pacing": pacing, 
-        "fillerWords" : filler_word_count,
-        "tip" : tip
-    }
+    return data
