@@ -23,15 +23,15 @@ function LiveFeedback({ data }) {
         <div className="card shadow p-4 m-4 mx-auto">
             <h1>Feedback</h1>
             <br />
-            <h4>Eye Contact: {data.eyeContact}</h4>
+            <h4>Eye Contact: {data.eye_contact}</h4>
             <br />
             <h4>Pacing: {data.pacing}</h4>
             <br />
-            <h4>Filler Word Count: {data.fillerWords}</h4>
+            <h4>Filler Word Count: {data.filler_word_count}</h4>
             <br />
-            <h4>Gesture Use: {data.gestures}</h4>
+            <h4>Gesture Use: {data.gesture_use}</h4>
             <br />
-            <h4>Quick Tip: {data.tip}</h4>
+            <h4>Quick Tip: {data.quick_tip}</h4>
         </div>
     )
 }

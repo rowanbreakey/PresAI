@@ -73,13 +73,18 @@ class SignUpRequest(BaseModel):
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
 class AIResponse(BaseModel):
-    """General context goes here"""
+    """You are responsible for analysing data from a users presentation and giving them helpful feedback on how to improve
+    
+    You are given: 
+    - A transcript taken from the last 5 seconds of the users speech. Keep in mind this transcript my not be perfect so if the words do not make sense act as though no transcript is provided
+    - A 2D list containing the velocities of the eye and wrist landmarks from the users camera feed. The format of this list is [right_wrist, left_wrist, eye].
+    """
 
-    eye_contact: str = Field(description="description of return parameter goes here")
-    pacing: str = Field(description="description of return parameter goes here")
-    filler_word_count: int = Field(description="description of return parameter goes here")
-    gesture_use: str = Field(description="description of return parameter goes here")
-    quick_tip: str = Field(description="description of return parameter goes here")
+    eye_contact: str = Field(description='Return: "Excellent", "Good", "Ok" or "Poor" based on how much the users eyes are scanning their audience (velocity of eye landmark)')
+    pacing: str = Field(description='Return: "Excellent", "Good", "Ok" or "Poor" based on how fast the user is speaking (# of words in transcript) keep in mind this is a presentation and not a conversation')
+    filler_word_count: int = Field(description='Return the number of filler words in the users speech. Filler words include but are not limited to "um", "like" and excessive use of "very"')
+    gesture_use: str = Field(description='Return: "Excellent", "Good", "Ok" or "Poor" based on how much the user is gesticulating (wrist landmark velocities)')
+    quick_tip: str = Field(description='Return a short one sentence tip to help the user improve. This should coincide with feedback from the other analysis categories.')
 
 def get_supabase() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -307,5 +312,5 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
     except Exception as e:
         print(e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-
+    print(data)
     return data
