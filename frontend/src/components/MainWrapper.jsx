@@ -3,13 +3,18 @@ import CameraArea from './CameraArea.jsx'
 import RecordButton from './RecordButton.jsx'
 import LiveFeedback from './LiveFeedback.jsx'
 import PresentationArea from './PresentationArea.jsx'
+import OverallFeedback from './OverallFeedback.jsx'
 
 function MainWrapper() {
     const [isRecording, setIsRecording] = useState(false)
     const [metrics, setMetrics] = useState(null)
+    const [readyForFeedback, setReadyForFeedback] = useState(false)
 
     const toggleRecording = () => {
-        setIsRecording((prev) => !prev)
+        if (isRecording) {
+            setReadyForFeedback(true);
+        }
+        setIsRecording((prev) => !prev);
     }
 
     return (
@@ -31,7 +36,15 @@ function MainWrapper() {
         <div className="col-12 col-md-4">
           <LiveFeedback data={metrics} />
         </div>
+
+        {readyForFeedback ? (
+            <OverallFeedback readyForFeedback={readyForFeedback} setReadyForFeedback={setReadyForFeedback}/>
+        ) : (
+            <></>
+        )}
         </>
+
+
     )
 }
 
