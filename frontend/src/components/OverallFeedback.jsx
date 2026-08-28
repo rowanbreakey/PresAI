@@ -11,6 +11,11 @@ function OverallFeedback({readyForFeedback, setReadyForFeedback}) {
                 credentials: 'include'
                 });
 
+            await fetch(`http://${window.location.hostname}:8000/api/delete-old-feedback`, {
+                method: 'DELETE', 
+                credentials: 'include'
+            });
+
             return response
         }
 

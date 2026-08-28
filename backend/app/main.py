@@ -310,7 +310,33 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
             id = user.id
             supabase.table("active_session_data").insert({"user_id":id, "data": data}).execute()
     except Exception as e:
-        print(e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    print(data)
     return data
+
+@app.get("/api/get-feedback")
+async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Client = Depends(get_service_supabase)):
+    try:
+        user_response = supabase.auth.get_user(supabase_access_token)
+        if user_response:
+            user = user_response.user
+            id = user.id
+            response = supabase.table("active_session_data").select("data").eq("user_id", id).execute()
+            all_data = response.data
+            print(all_data)
+            #here we need to process all the data to make it legible to the ai. i also need to make the transcript get sent each time with data.
+            return all_data
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Something went wrong while retreiving your data")
+
+@app.delete("/api/delete-old-feedback")
+async def delete_old_feedback(supabase_access_token : str = Cookie(None), supabase : Client = Depends(get_service_supabase)):
+    print("getting here")
+    try:
+        user_response = supabase.auth.get_user(supabase_access_token)
+        if user_response:
+            user = user_response.user
+            id = user.id
+            supabase.table("active_session_data").delete().eq("user_id", id).execute()
+    except Exception as e:
+        print("erroring")
+        raise HTTPException(status_code=401, detail="Something went wrong while retreiving your data")
