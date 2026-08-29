@@ -21,6 +21,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from gotrue.errors import AuthApiError
 from google import genai
 from google.genai import types
+from typing import List, Dict, cast
 
 os.environ["GLOG_minloglevel"] = "2"
 
@@ -72,7 +73,7 @@ class SignUpRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
-class AIResponse(BaseModel):
+class AIResponseQuick(BaseModel):
     """You are responsible for analysing data from a users presentation and giving them helpful feedback on how to improve
     
     You are given: 
@@ -85,6 +86,21 @@ class AIResponse(BaseModel):
     filler_word_count: int = Field(description='Return the number of filler words in the users speech. Filler words include but are not limited to "um", "like" and excessive use of "very"')
     gesture_use: str = Field(description='Return: "Excellent", "Good", "Ok" or "Poor" based on how much the user is gesticulating (wrist landmark velocities)')
     quick_tip: str = Field(description='Return a short one sentence tip to help the user improve. This should coincide with feedback from the other analysis categories.')
+
+class AIResponseOverall(BaseModel):
+    """You are responsible for giving feedback to a user based on data aquired from a presentation they gave
+
+    You are given:
+    - a full transcript of everything they said in their presentation (note that this may be innacurate and so dont give feedback on the coherence of content)
+    - a list of scores given based on the quality of the users gestures throughout the presentation
+    - a list of scores given based on the level of eye contact the user maintained with their audience
+    - a list of scores based on the pacing of the users speech throughout their presentation
+    
+    Scores were taken roughly every 5 seconds throuhgout the users presentation
+    """
+
+    overall_score: int = Field(description='Return: an integer from 1-100 based on the overall quality of the users presentation.')
+    feedback_paragraph: str = Field(description='Return: a quick paraphraph (2-5 sentences) detailing how the user could improve their presentation. some potential talking points include but are not limited to pacing, gestures, eye contact, number of filler words, etc. ')
 
 def get_supabase() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -290,18 +306,26 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
     else:
         audio_data = ""
 
+    print(audio_data)
     ai_response_raw = client.models.generate_content(
         model="gemini-3.6-flash", 
         contents=f"TRANSCRIPT: {audio_data}, LANDMARK VELOCITIES: {video_data}",
         config=types.GenerateContentConfig(
             response_mime_type="application/json", 
-            response_schema=AIResponse,
+            response_schema=AIResponseQuick,
         ),
     )
 
 
     data = get_response_dict(ai_response_raw.parsed)
     data["success"] = "success"
+
+    transcript = ""
+
+    for chunk in audio_data:
+        chunk.split("]")
+        transcript += chunk[1]
+    data["transcript"] = transcript
 
     try:
         user_response = supabase.auth.get_user(supabase_access_token)
@@ -321,16 +345,38 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
             user = user_response.user
             id = user.id
             response = supabase.table("active_session_data").select("data").eq("user_id", id).execute()
-            all_data = response.data
-            print(all_data)
-            #here we need to process all the data to make it legible to the ai. i also need to make the transcript get sent each time with data.
-            return all_data
+            all_data = cast(List[Dict], response.data)
+
+            transcript = ""
+            gestures = []
+            eye_contact = []
+            pacing = []
+            for data in all_data:
+                transcript += data["data"]["transcript"]
+                gestures.append(data["data"]["gesture_use"])
+                eye_contact.append(data["data"]["eye_contact"])
+                pacing.append(data["data"]["pacing"])
+
+            ai_response_raw = client.models.generate_content(
+                model="gemini-3.6-flash", 
+                contents=f"TRANSCRIPT: {transcript}, GESTURE RATINGS: {gestures}, EYE CONTACT RATINGS: {eye_contact}",
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json", 
+                    response_schema=AIResponseOverall,
+                ),
+            )
+
+            data = get_response_dict(ai_response_raw.parsed)
+            print(data)
+            print("should have pritned data")
+            return data
+            
     except Exception as e:
+        print("error")
         raise HTTPException(status_code=401, detail="Something went wrong while retreiving your data")
 
 @app.delete("/api/delete-old-feedback")
 async def delete_old_feedback(supabase_access_token : str = Cookie(None), supabase : Client = Depends(get_service_supabase)):
-    print("getting here")
     try:
         user_response = supabase.auth.get_user(supabase_access_token)
         if user_response:
