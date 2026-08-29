@@ -97,6 +97,8 @@ class AIResponseOverall(BaseModel):
     - a list of scores based on the pacing of the users speech throughout their presentation
     
     Scores were taken roughly every 5 seconds throuhgout the users presentation
+
+    IF THE ABOVE ARE NOT PROVIDED, GIVE A SCORE OF 0 AND FEEDBACK "Record a longer presentation to receive feedback."
     """
 
     overall_score: int = Field(description='Return: an integer from 1-100 based on the overall quality of the users presentation.')
@@ -347,6 +349,8 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
             response = supabase.table("active_session_data").select("data").eq("user_id", id).execute()
             all_data = cast(List[Dict], response.data)
 
+            print(all_data)
+
             transcript = ""
             gestures = []
             eye_contact = []
@@ -356,6 +360,8 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
                 gestures.append(data["data"]["gesture_use"])
                 eye_contact.append(data["data"]["eye_contact"])
                 pacing.append(data["data"]["pacing"])
+
+            print(transcript)
 
             ai_response_raw = client.models.generate_content(
                 model="gemini-3.6-flash", 
@@ -372,7 +378,7 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
             return data
             
     except Exception as e:
-        print("error")
+        print(e)
         raise HTTPException(status_code=401, detail="Something went wrong while retreiving your data")
 
 @app.delete("/api/delete-old-feedback")
@@ -384,5 +390,4 @@ async def delete_old_feedback(supabase_access_token : str = Cookie(None), supaba
             id = user.id
             supabase.table("active_session_data").delete().eq("user_id", id).execute()
     except Exception as e:
-        print("erroring")
         raise HTTPException(status_code=401, detail="Something went wrong while retreiving your data")

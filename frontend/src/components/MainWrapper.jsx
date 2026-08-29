@@ -17,6 +17,10 @@ function MainWrapper() {
         setIsRecording((prev) => !prev);
     }
 
+    function doneWithFeedback() {
+        setReadyForFeedback(false)
+    }
+
     return (
         <>
         <div className="col-12 col-md-8">
@@ -38,7 +42,7 @@ function MainWrapper() {
         </div>
 
         {readyForFeedback ? (
-            <OverallFeedback readyForFeedback={readyForFeedback} setReadyForFeedback={setReadyForFeedback}/>
+            <OverallFeedback doneWithFeedback={doneWithFeedback}/>
         ) : (
             <></>
         )}
