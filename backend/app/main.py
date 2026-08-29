@@ -98,7 +98,7 @@ class AIResponseOverall(BaseModel):
     
     Scores were taken roughly every 5 seconds throuhgout the users presentation
 
-    IF THE ABOVE ARE NOT PROVIDED, GIVE A SCORE OF 0 AND FEEDBACK "Record a longer presentation to receive feedback."
+    IF THE ABOVE ARE NOT PROVIDED, GIVE A SCORE OF 0 AND FEEDBACK containing what data was missing/insufficient.
     """
 
     overall_score: int = Field(description='Return: an integer from 1-100 based on the overall quality of the users presentation.')
@@ -310,7 +310,7 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
 
     print(audio_data)
     ai_response_raw = client.models.generate_content(
-        model="gemini-3.6-flash", 
+        model="gemini-3.5-flash", 
         contents=f"TRANSCRIPT: {audio_data}, LANDMARK VELOCITIES: {video_data}",
         config=types.GenerateContentConfig(
             response_mime_type="application/json", 
@@ -325,8 +325,9 @@ async def process_batch(frames : str = Form(...), audio : Optional[UploadFile] =
     transcript = ""
 
     for chunk in audio_data:
-        chunk.split("]")
-        transcript += chunk[1]
+        split_up = chunk.split("]")
+        print(split_up)
+        transcript += split_up[1]
     data["transcript"] = transcript
 
     try:
@@ -349,8 +350,6 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
             response = supabase.table("active_session_data").select("data").eq("user_id", id).execute()
             all_data = cast(List[Dict], response.data)
 
-            print(all_data)
-
             transcript = ""
             gestures = []
             eye_contact = []
@@ -361,11 +360,9 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
                 eye_contact.append(data["data"]["eye_contact"])
                 pacing.append(data["data"]["pacing"])
 
-            print(transcript)
-
             ai_response_raw = client.models.generate_content(
-                model="gemini-3.6-flash", 
-                contents=f"TRANSCRIPT: {transcript}, GESTURE RATINGS: {gestures}, EYE CONTACT RATINGS: {eye_contact}",
+                model="gemini-3.5-flash", 
+                contents=f"TRANSCRIPT: {transcript}, GESTURE RATINGS: {gestures}, EYE CONTACT RATINGS: {eye_contact}, PACING: {pacing}",
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json", 
                     response_schema=AIResponseOverall,
@@ -373,12 +370,10 @@ async def get_feedback(supabase_access_token : str = Cookie(None), supabase : Cl
             )
 
             data = get_response_dict(ai_response_raw.parsed)
-            print(data)
             print("should have pritned data")
             return data
             
     except Exception as e:
-        print(e)
         raise HTTPException(status_code=401, detail="Something went wrong while retreiving your data")
 
 @app.delete("/api/delete-old-feedback")
